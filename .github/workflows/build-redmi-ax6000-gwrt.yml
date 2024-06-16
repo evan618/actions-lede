@@ -54,7 +54,7 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
-        
+
     - name: Check server performance
       run: |
         echo "警告⚠"
@@ -72,7 +72,7 @@ jobs:
         echo -e  "硬盘数量：$(ls /dev/sd* | grep -v [1-9] | wc -l) \n"
         echo "硬盘详情："
         df -Th
-        
+
     - name: Clone source code
       working-directory: /workdir
       run: |
@@ -104,13 +104,6 @@ jobs:
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    - name: SSH connection to Actions
-      uses: P3TERX/ssh2actions@v1.0.0
-      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
-      env:
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-
     - name: Download package
       id: package
       run: |
@@ -126,7 +119,6 @@ jobs:
         cd openwrt
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 || make -j1 V=s
-        #echo "::set-output name=status::success"
         echo "status=success" >>$GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
@@ -150,7 +142,6 @@ jobs:
         cd openwrt/bin/targets/*/*
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        #echo "::set-output name=status::success"
         echo "status=success" >>$GITHUB_OUTPUT
 
     - name: Upload firmware directory
@@ -160,36 +151,12 @@ jobs:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
-    - name: Upload firmware to cowtransfer
-      id: cowtransfer
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
-      run: |
-        curl -fsSL git.io/file-transfer | sh
-        ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
-        echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
-        #echo "::set-output name=url::$(cat cowtransfer.log | grep https | cut -f3 -d" ")"
-        echo "url=$(cat cowtransfer.log | grep https | cut -f3 -d" ")" >>$GITHUB_OUTPUT
-
-    - name: Upload firmware to WeTransfer
-      id: wetransfer
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
-      run: |
-        curl -fsSL git.io/file-transfer | sh
-        ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
-        echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
-        #echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
-        echo "url=$(cat wetransfer.log | grep https | cut -f3 -d" ")" >>$GITHUB_OUTPUT
-
     - name: Generate release tag
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        #echo "::set-output name=release_tag::ZN-M2-$(date +"%Y.%m.%d-%H%M")"
-        echo "release_tag=Redmi-AX6000-$(date +"%Y.%m.%d-%H%M")" >>$GITHUB_OUTPUT
+        echo "release_tag=GWRT-redmi-ax6000-$(date +"%Y.%m.%d-%H%M")" >>$GITHUB_OUTPUT
         touch release.txt
-        [ $UPLOAD_COWTRANSFER = true ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
-        [ $UPLOAD_WETRANSFER = true ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
-        #echo "::set-output name=status::success"
         echo "status=success" >>$GITHUB_OUTPUT
 
     - name: Upload firmware to release
@@ -208,11 +175,3 @@ jobs:
         retain_days: 1
         keep_minimum_runs: 3
 
-    - name: Remove old Releases
-      uses: dev-drprasad/delete-older-releases@v0.2.1
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      with:
-        keep_latest: 10
-        delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
